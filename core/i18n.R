@@ -8,8 +8,10 @@ library(shiny.i18n)
 # This helper appends the rows of one table to another.
 # Columns that only one of the tables has are filled with NA.
 .append_rows <- function(table, rows) {
-  for (col in setdiff(names(rows), names(table))) table[[col]] <- NA
-  for (col in setdiff(names(table), names(rows))) rows[[col]] <- NA
+  for (col in setdiff(names(rows), names(table)))
+    table[[col]] <- NA
+  for (col in setdiff(names(table), names(rows)))
+    rows[[col]] <- NA
   rbind(table, rows[, names(table), drop = FALSE])
 }
 
@@ -21,10 +23,14 @@ library(shiny.i18n)
 # its last definition. The function returns a list of tables named by
 # the language code.
 discover_translations <- function(dir = NULL, refresh = FALSE) {
-  if (is.null(dir)) dir <- app_file("translations")
-  if (!dir.exists(dir)) stop("Translations folder not found; no translations loaded.")
-  if (!refresh && !is.null(.translation_cache[[dir]])) return(.translation_cache[[dir]])
-
+  if (is.null(dir))
+    dir <- app_file("translations")
+  if (!dir.exists(dir))
+    stop("Translations folder not found; no translations loaded.")
+  if (!refresh &&
+      !is.null(.translation_cache[[dir]]))
+    return(.translation_cache[[dir]])
+  
   # This first pass loads the standard table of every language folder.
   folders <- list.dirs(dir, full.names = TRUE, recursive = FALSE)
   languages <- list()
@@ -34,56 +40,83 @@ discover_translations <- function(dir = NULL, refresh = FALSE) {
     # name carries the language code, e.g. translation_es.csv -> es.
     base <- list.files(folder, pattern = "^translation_.*[.]csv$", full.names = TRUE)
     if (!length(base)) {
-      warning("Skipping language folder '", name, "': no translation_*.csv base file.")
+      warning("Skipping language folder '",
+              name,
+              "': no translation_*.csv base file.")
       next
     }
     code <- sub("^translation_(.*)[.]csv$", "\\1", basename(base[1]))
     if (length(base) > 1) {
-      warning("Language folder '", name, "' has several translation_*.csv files; using '", basename(base[1]), "'.")
+      warning(
+        "Language folder '",
+        name,
+        "' has several translation_*.csv files; using '",
+        basename(base[1]),
+        "'."
+      )
     }
     if (!nzchar(code)) {
-      warning("Skipping language folder '", name, "': the base file name has no language code.")
+      warning("Skipping language folder '",
+              name,
+              "': the base file name has no language code.")
       next
     }
     table <- read.csv(base[1], header = TRUE, encoding = "UTF-8")
     if (!(code %in% names(table))) {
-      warning("Skipping language folder '", name, "': the base file has no '", code, "' column.")
+      warning("Skipping language folder '",
+              name,
+              "': the base file has no '",
+              code,
+              "' column.")
       next
     }
-    languages[[code]] <- list(folder = folder, base = basename(base[1]), table = table)
+    languages[[code]] <- list(folder = folder,
+                              base = basename(base[1]),
+                              table = table)
   }
-
+  
   # This second pass starts the discovery: it finds the other .csv files
   # of each folder and appends them to the standard table of the language.
   for (code in names(languages)) {
     language <- languages[[code]]
     key <- names(language$table)[1]
     extras <- setdiff(
-      list.files(language$folder, pattern = "[.]csv$", full.names = TRUE),
+      list.files(
+        language$folder,
+        pattern = "[.]csv$",
+        full.names = TRUE
+      ),
       file.path(language$folder, language$base)
     )
     for (extra in extras) {
       rows <- read.csv(extra, header = TRUE, encoding = "UTF-8")
       if (!(key %in% names(rows))) {
-        warning("Skipping '", basename(extra), "': it has no '", key, "' key column.")
+        warning("Skipping '",
+                basename(extra),
+                "': it has no '",
+                key,
+                "' key column.")
         next
       }
       language$table <- .append_rows(language$table, rows)
     }
     # A key defined several times keeps its last translation.
     if (anyDuplicated(language$table[[key]])) {
-      warning("In language folder '", basename(language$folder),
-              "', some keys are defined more than once; the last definition wins.")
+      warning(
+        "In language folder '",
+        basename(language$folder),
+        "', some keys are defined more than once; the last definition wins."
+      )
     }
     languages[[code]] <- language
   }
-
+  
   # This block drops the repeated keys, keeping the last definition.
   tables <- lapply(languages, function(language) {
     key <- names(language$table)[1]
     language$table[!duplicated(language$table[[key]], fromLast = TRUE), , drop = FALSE]
   })
-
+  
   .translation_cache[[dir]] <- tables
   tables
 }
@@ -93,21 +126,30 @@ discover_translations <- function(dir = NULL, refresh = FALSE) {
 # Translator merges into one translation set.
 build_translator <- function(dir = NULL, refresh = FALSE) {
   tables <- discover_translations(dir = dir, refresh = refresh)
-  if (!length(tables)) stop("No language folders found in '", dir, "'.")
-
+  if (!length(tables))
+    stop("No language folders found in '", dir, "'.")
+  
   # The Translator merges the tables by their key column, so all of
   # them must share it, e.g. "en".
-  keys <- vapply(tables, function(table) names(table)[1], character(1))
+  keys <- vapply(tables, function(table)
+    names(table)[1], character(1))
   if (length(unique(keys)) > 1) {
-    stop("All translation tables must share the same key column: ",
-         paste(unique(keys), collapse = ", "), ".")
+    stop(
+      "All translation tables must share the same key column: ",
+      paste(unique(keys), collapse = ", "),
+      "."
+    )
   }
-
+  
   tmp <- tempfile("i18n_")
   dir.create(tmp)
   for (code in names(tables)) {
-    write.csv(tables[[code]], file.path(tmp, paste0("translation_", code, ".csv")),
-              row.names = FALSE, fileEncoding = "UTF-8")
+    write.csv(
+      tables[[code]],
+      file.path(tmp, paste0("translation_", code, ".csv")),
+      row.names = FALSE,
+      fileEncoding = "UTF-8"
+    )
   }
   Translator$new(translation_csvs_path = tmp)
 }

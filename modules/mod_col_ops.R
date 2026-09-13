@@ -28,7 +28,7 @@ mod_col_ops_server <- function(id, store) {
       store$set_df(new_df, reset_types = FALSE)
       updateTextInput(session, "new_col_name", value = "")
     })
-
+    
     # Delete the selected column, but keep at least one column in the table.
     # The module updates the types itself, so it skips the automatic type reset.
     observeEvent(input$delete_col, {
@@ -41,7 +41,7 @@ mod_col_ops_server <- function(id, store) {
       store$col_types(col_types)
       store$set_df(new_df, reset_types = FALSE)
     })
-
+    
     # Refresh the drop-down list of columns for the delete action.
     observe({
       store$version()

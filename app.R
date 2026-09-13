@@ -30,17 +30,15 @@ port_is_free <- function(port) {
 }
 
 # This helper reads the --server_mode parameter of the command line,
-# e.g. Rscript.exe app.R --server_mode. Without it, the default serves
-# only this machine, and --server_mode serves every machine of the
-# local network.
+# Without it, the default serves only this machine, and 
+# --server_mode serves every machine of the local network.
 command_line_host <- function() {
   if (any(commandArgs() == "--server_mode")) return("0.0.0.0")
   "127.0.0.1"
 }
 
-# This helper reads the --port= parameter of the command line,
-# e.g. Rscript.exe app.R --port=4321, and stops when the port is
-# invalid or not available.
+# This helper reads the --port= parameter of the command line, 
+# and stops when the port is invalid or not available.
 command_line_port <- function() {
   port_args <- grep("^--port=", commandArgs(), value = TRUE)
   if (!length(port_args)) return(default_port)

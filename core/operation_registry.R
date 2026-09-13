@@ -1,4 +1,3 @@
-
 # This file defines the operation registry.
 # Each file in operations/ registers one statistical operation here.
 .op_registry <- new.env(parent = emptyenv())
