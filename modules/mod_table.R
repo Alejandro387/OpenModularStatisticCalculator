@@ -3,6 +3,7 @@
 
 # The registry places this module in the main area.
 mod_table_where <- "main"
+mod_table_order <- 0
 mod_table_ui <- function(id) {
   ns <- NS(id)
   card(card_header(i18n$t("Data Table")), card_body(DT::DTOutput(ns("main_table"))))
