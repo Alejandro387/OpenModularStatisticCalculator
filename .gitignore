@@ -23,6 +23,7 @@ hostedOnServer
 
 # RStudio files
 .Rproj.user/
+tests/
 
 # produced vignettes
 vignettes/*.html
