@@ -1,45 +1,50 @@
-# This file starts the app.
-# It loads the packages, finds the app folder, and builds the app environment.
-# Then it loads all code files in order and starts Shiny.
+# =====================================================================
+# Calculadora Estadística — launcher
+#
+# Order of operations:
+#   1. Resolve launch settings from the command line (fail fast)
+#   2. Install and load required packages
+#   3. Build the app environment and source all app code into it
+#   4. Start Shiny
+# =====================================================================
 
-# This block chooses the port and the host of the app.
+# ---- 1. Launch settings ---------------------------------------------
 # The default port and host are used by every launch; an Rscript.exe launch
-# can override them with the --port= and --server_mode parameters. A wrong or
-# already-taken port stops the app with an error before anything else loads.
-default_port <- 6357
+# can override them with --port= and --server_mode. A wrong or already-taken
+# port stops the app with an error before anything else loads.
 
-# This line pins the default port for every way of launching the app.
-options(shiny.port = default_port)
+DEFAULT_PORT <- 6357
 
-# This helper checks that nothing is serving on a port already.
-# A server that is listening accepts a connection, so a successful
-# connection means the port is taken. (On Windows, httpuv, which shiny
-# uses, can bind a port over another server, so testing the bind is
-# not enough.)
-port_is_free <- function(port) {
-  taken <- tryCatch({
+# A server that is listening accepts a connection, so a successful connection
+# means the port is taken. (On Windows, httpuv, which shiny uses, can bind a
+# port over another server, so testing the bind alone is not enough.)
+port_is_listening <- function(port) {
+  tryCatch({
     con <- socketConnection("127.0.0.1", port, open = "r", timeout = 1)
     close(con)
     TRUE
   }, error = function(e) FALSE)
-  if (taken) return(FALSE)
+}
+
+# A port is bindable when we can create a listening socket on it.
+port_binds <- function(port) {
   socket <- tryCatch(serverSocket(port), error = function(e) NULL)
   if (is.null(socket)) return(FALSE)
   close(socket)
   TRUE
 }
 
-# This helper reads the --server_mode parameter of the command line,
-# Without it, the default serves only this machine, and 
-# --server_mode serves every machine of the local network.
-command_line_host <- function() {
-  if (any(commandArgs() == "--server_mode")) return("0.0.0.0")
-  "127.0.0.1"
+port_is_free <- function(port) {
+  !port_is_listening(port) && port_binds(port)
 }
 
-# This helper reads the --port= parameter of the command line, 
-# and stops when the port is invalid or not available.
-command_line_port <- function() {
+# --server_mode serves every machine of the local network; without it, only
+# this machine.
+parse_launch_host <- function() {
+  if (any(commandArgs() == "--server_mode")) "0.0.0.0" else "127.0.0.1"
+}
+
+parse_launch_port <- function(default_port) {
   port_args <- grep("^--port=", commandArgs(), value = TRUE)
   if (!length(port_args)) return(default_port)
   port <- suppressWarnings(as.integer(sub("^--port=", "", port_args[1])))
@@ -53,99 +58,107 @@ command_line_port <- function() {
   port
 }
 
-# These lines resolve the port and the host before anything else is
-# loaded, so a wrong parameter stops the app immediately.
-launch_port <- command_line_port()
-launch_host <- command_line_host()
+# Resolved before anything else loads, so a wrong parameter fails immediately.
+launch_settings <- list(
+  port = parse_launch_port(DEFAULT_PORT),
+  host = parse_launch_host()
+)
 
-# This block installs and loads the packages that the app needs.
-required_packages <- c("shiny", "bslib", "DT", "ggplot2", "qcc", "e1071", "shiny.i18n", "colourpicker")
-for (package in required_packages) {
-  if (!requireNamespace(package, quietly = TRUE)) install.packages(package)
-  library(package, character.only = TRUE)
+# Pins the default port for every way of launching the app.
+options(shiny.port = DEFAULT_PORT)
+
+
+# --Packages--
+REQUIRED_PACKAGES <- c("shiny", "bslib", "DT", "ggplot2", "qcc",
+                       "e1071", "shiny.i18n", "colourpicker", "datasets")
+
+install_missing_packages <- function(packages) {
+  missing <- packages[!vapply(packages,
+    requireNamespace, logical(1), quietly = TRUE)]
+  if (length(missing)) {
+    message("Installing missing packages: ", paste(missing, collapse = ", "))
+    install.packages(missing, dependencies = TRUE)
+  }
 }
 
-# This block finds the app root folder.
-# The root folder is the folder that holds core/ and modules/.
-app_root <- local({
-  # This helper checks that a folder holds core/ and modules/.
-  has_app_layout <- function(folder) {
-    dir.exists(file.path(folder, "core")) && dir.exists(file.path(folder, "modules"))
-  }
+load_packages <- function(packages) {
+  invisible(lapply(packages, library, character.only = TRUE))
+}
 
-  # R records the file of each sourced file.
-  # This helper collects the folders of those files.
-  from_source_frames <- function() {
-    source_dirs <- Filter(is.character, lapply(rev(sys.frames()), function(frame) {
-      tryCatch(get("ofile", envir = frame, inherits = FALSE), error = function(e) NULL)
-    }))
-    if (length(source_dirs)) dirname(unlist(source_dirs, use.names = FALSE)) else character(0)
-  }
+install_missing_packages(REQUIRED_PACKAGES)
+load_packages(REQUIRED_PACKAGES)
 
-  # This helper reads the folder from the --file= argument of Rscript.
-  from_rscript_arg <- function() {
+
+# --App root--
+# The root folder is the folder that holds app.R, core/, and modules/.
+# Rscript exposes the script path via --file=; RStudio's Run App (and
+# shiny::runApp()) run with the working directory set to the app folder.
+# If neither yields a folder with the expected layout, stop with a clear
+# error instead of guessing.
+find_app_root <- function() {
+  root_from_rscript <- function() {
     file_args <- grep("^--file=", commandArgs(), value = TRUE)
-    if (length(file_args)) dirname(sub("^--file=", "", file_args)) else character(0)
+    if (length(file_args)) dirname(sub("^--file=", "", file_args[1])) else character(0)
   }
 
-  # This helper collects the working directory and its parent folders.
-  from_wd_ancestors <- function() {
-    folder <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
-    ancestors <- folder
-    for (i in 1:10) {
-      folder <- dirname(folder)
-      ancestors <- c(ancestors, folder)
-      if (identical(folder, dirname(folder))) break  # reached filesystem root
-    }
-    ancestors
+  candidate <- normalizePath(c(root_from_rscript(), getwd())[1],
+                             winslash = "/", mustWork = FALSE)
+
+  if (!dir.exists(file.path(candidate, "core")) ||
+      !dir.exists(file.path(candidate, "modules"))) {
+    stop("App root not found: '", candidate, "' does not contain core/ ",
+         "and modules/. Launch with RStudio's Run App, or with ",
+         "Rscript.exe app.R from any directory.")
+  }
+  candidate
+}
+
+app_root <- find_app_root()
+app_file <- function(...) file.path(app_root, ...)
+
+# --App environment--
+# The app environment holds all app code, keeping the global workspace clean.
+build_app_env <- function() {
+  env <- new.env(parent = globalenv())
+
+  # The app pins the modal functions of the shiny package here, because a
+  # same-named object in the global workspace would otherwise replace them.
+  env$showModal <- shiny::showModal
+  env$removeModal <- shiny::removeModal
+  env$showNotification <- shiny::showNotification
+
+  env$app_file <- function(...) file.path(app_root, ...)
+
+  # Core files load in dependency order: the helper files first, the UI and
+  # the server last.
+  core_files <- c(
+    "core/i18n.R",
+    "core/data_store.R",
+    "core/operation_registry.R",
+    "core/graph_params.R",
+    "core/graph_registry.R",
+    "core/module_registry.R",
+    "core/ui_helpers.R",
+    "core/ui.R",
+    "core/server.R"
+  )
+  for (file in core_files) {
+    source(app_file(file), local = env)
   }
 
-  # The code uses the first candidate folder that has the app layout.
-  candidates <- unique(c(from_source_frames(), from_rscript_arg(), from_wd_ancestors()))
-  found <- Filter(has_app_layout, candidates)
-  if (!length(found)) {
-    stop("App root not found: no candidate directory contains both core/ ",
-         "and modules/. Launch the app from inside the project, or source ",
-         "app.R directly.")
-  }
-  normalizePath(found[1], winslash = "/", mustWork = TRUE)
-})
+  env
+}
 
-# The app environment holds all app code.
-# It keeps the global workspace clean.
-app_env <- new.env(parent = globalenv())
+app_env <- build_app_env()
 
-# The app pins the modal functions of the shiny package here.
-# A same-named object in the global workspace would otherwise replace them.
-app_env$showModal <- shiny::showModal
-app_env$removeModal <- shiny::removeModal
-app_env$showNotification <- shiny::showNotification
-
-# This helper builds a path from the app root.
-app_env$app_file <- function(...) file.path(app_root, ...)
-app_file <- app_env$app_file
-
-# This block loads the core files.
-# The helper files load first, and the UI and the server load last.
-source(app_file("core", "i18n.R"), local = app_env)
-source(app_file("core", "data_store.R"), local = app_env)
-source(app_file("core", "operation_registry.R"), local = app_env)
-source(app_file("core", "graph_params.R"), local = app_env)
-source(app_file("core", "graph_registry.R"), local = app_env)
-source(app_file("core", "module_registry.R"), local = app_env)
-source(app_file("core", "ui_helpers.R"), local = app_env)
-
-source(app_file("core", "ui.R"), local = app_env)
-source(app_file("core", "server.R"), local = app_env)
-
-# This block starts the Shiny app.
+# --Start Shiny--
 # Under RStudio (Run App), the file returns the app object and the launcher
-# manages the app. Under Rscript.exe, the app is served directly on the
-# port and host chosen at the top, and a failed port stops the launch with
-# an error.
+# manages the app. Under Rscript.exe, the app is served directly on the port
+# and host resolved in step 1, and a failed port stops the launch with an
+# error.
 app <- shinyApp(app_env$ui, app_env$server)
 if (any(grepl("^--file=", commandArgs()))) {
-  runApp(app, port = launch_port, host = launch_host)
+  runApp(app, port = launch_settings$port, host = launch_settings$host)
 } else {
   app
 }
