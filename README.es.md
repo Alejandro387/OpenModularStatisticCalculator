@@ -4,8 +4,7 @@
 
 Aplicación web modular en Shiny para estadística descriptiva. Carga un conjunto de
 datos en el navegador, explóralo con tablas interactivas, ejecuta operaciones
-estadísticas y construye gráficos — todo mediante una arquitectura de estilo plugin
-fácil de extender.
+estadísticas y construye gráficos — todo mediante una arquitectura modular sencilla de extender.
 
 ## Funcionalidades
 
