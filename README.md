@@ -1,3 +1,5 @@
+[English](README.md) | [Español](README.es.md)
+
 # Open Modular Statistical Calculator
 
 A modular Shiny web application for descriptive statistics. Load a dataset in the

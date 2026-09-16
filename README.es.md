@@ -1,3 +1,5 @@
+[English](README.md) | [Español](README.es.md)
+
 # Calculadora Estadística / Open Modular Statistical Calculator
 
 Aplicación web modular en Shiny para estadística descriptiva. Carga un conjunto de
