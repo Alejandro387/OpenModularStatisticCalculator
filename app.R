@@ -72,21 +72,21 @@ options(shiny.port = DEFAULT_PORT)
 REQUIRED_PACKAGES <- c("shiny", "bslib", "DT", "ggplot2", "qcc",
                        "e1071", "shiny.i18n", "colourpicker", "datasets")
 
-install_missing_packages <- function(packages) {
-  missing <- packages[!vapply(packages,
-    requireNamespace, logical(1), quietly = TRUE)]
-  if (length(missing)) {
-    message("Installing missing packages: ", paste(missing, collapse = ", "))
-    install.packages(missing, dependencies = TRUE)
-  }
+# Rscript.exe runs outside RStudio, which normally supplies a default CRAN
+# mirror; without one, install.packages() has nowhere to download from, so
+# set one explicitly if none is configured.
+if (getOption("repos")["CRAN"] == "@CRAN@" || is.na(getOption("repos")["CRAN"])) {
+  options(repos = c(CRAN = "https://cran.rediris.es"))
 }
 
-load_packages <- function(packages) {
-  invisible(lapply(packages, library, character.only = TRUE))
+# Installs and loads one package at a time, as in the original launcher,
+# instead of batching every missing package into a single install.packages()
+# call (which, with dependencies = TRUE, pulled in a much larger set of
+# optional packages).
+for (package in REQUIRED_PACKAGES) {
+  if (!requireNamespace(package, quietly = TRUE)) install.packages(package)
+  library(package, character.only = TRUE)
 }
-
-install_missing_packages(REQUIRED_PACKAGES)
-load_packages(REQUIRED_PACKAGES)
 
 
 # --App root--
